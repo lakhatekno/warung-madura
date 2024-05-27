@@ -7,23 +7,16 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Konfigurasi koneksi database
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,
+const db = mysql.createPool({
+  socketPath: process.env.INSTANCE_UNIX_SOCKET,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
 });
 
-// Koneksi ke database
-db.connect((err) => {
-  if (err) {
-    console.error('Error connecting to the database:', err);
-    return;
-  }
-  console.log('Connected to the database');
+app.get('/', (req, res) => {
+  res.send('Hello from App Engine!');
 });
-
 // CRUD untuk tabel 'gudang'
 // Create
 app.post('/gudang', (req, res) => {
