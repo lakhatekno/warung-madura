@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warung Madura</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            width: 80%;
+            margin: auto;
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+        }
+
+        h1 {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .section {
+            background: #fff;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        form {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: inline-block;
+            width: 150px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="datetime-local"] {
+            width: calc(100% - 160px);
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #5cb85c;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #4cae4c;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .data-table th {
+            background: #f2f2f2;
+        }
+
+        tr {
+            text-wrap: awrap;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Warung Madura</h1>
+    <div class="container">
+        <div class="section">
+            <h2>Gudang</h2>
+            <form id="form_add_item">
+                <label for="id_barang">ID Barang:</label>
+                <input type="text" id="id_barang" name="id_barang" required><br>
+                <label for="nama_barang">Nama Barang:</label>
+                <input type="text" id="nama_barang" name="nama_barang" required><br>
+                <label for="stok">Stok:</label>
+                <input type="number" id="stok" name="stok" required><br>
+                <label for="harga_jual">Harga Jual:</label>
+                <input type="text" id="harga_jual" name="harga_jual" required><br>
+                <button type="submit" id="formItemButton">Tambah</button>
+            </form>
+            <table id="gudang_table" class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID Barang</th>
+                        <th>Nama Barang</th>
+                        <th>Stok</th>
+                        <th>Harga Jual</th>
+                        <th>Aksi</th>
+                        <th>+ ke Nota</th>
+                    </tr>
+                </thead>
+                <tbody id="gudang_items">
+                </tbody>
+            </table>
+        </div>
+
+        <div id="input-form-container" class="section">
+            <button id="transaksi_baru" onclick="startTransaction()">Transaksi Baru</button>
+            <form id="form_transaksi">
+                <h2>Rp<span id="invoice_total_harga">0</span></h2>
+                <label for="invoice_id_transaksi">ID Transaksi:</label>
+                <input type="text" id="invoice_id_transaksi" name="invoice_id_transaksi" required disabled>
+                <br>
+                <br>
+                <label for="invoice_tanggal_waktu">Tanggal Waktu transaksi:</label>
+                <input type="datetime-local" id="invoice_tanggal_waktu" name="invoice_tanggal_waktu" disabled>
+                <br>
+                <br>
+                <label for="invoice_metode_pembayaran">Metode Pembayaran:</label>
+                <select type="text" id="invoice_metode_pembayaran" name="invoice_metode_pembayaran" required disabled>
+                    <option value="Cash">Cash</option>
+                    <option value="QRIS Bank">QRIS Bank</option>
+                    <option value="QRIS e-Wallet">QRIS e-Wallet</option>
+                </select>
+                <br>
+                <br>
+                <br>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nama Barang</th>
+                            <th>Harga Satuan</th>
+                            <th>Jumlah</th>
+                            <th>Sub Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="keranjang"></tbody>
+                </table>
+                <br>
+                <br>
+                <button type="submit" id="print_invoice" disabled>Selesai Transaksi</button>
+            </form>
+        </div>
+
+    </div>
+
+    <script>
+        // get elements
+        const tableGudang = document.querySelector('#gudang_items');
+        const formItems = document.querySelector('#form_add_item');
+        let id_barang = document.getElementById('id_barang');
+        let nama_barang = document.getElementById('nama_barang');
+        let stok = document.getElementById('stok');
+        let harga_jual = document.getElementById('harga_jual');
+        const totalHarga = document.querySelector('#invoice_total_harga');
+        const invoiceId = document.querySelector('#invoice_id_transaksi');
+        const invoiceTotal = document.querySelector('#invoice_total_harga');
+        const invoiceTanggalWaktu = document.querySelector('#invoice_tanggal_waktu');
+        const invoicePembayaran = document.querySelector('#invoice_metode_pembayaran');
+        const keranjang = document.querySelector('#keranjang');
+        const printInvoice = document.querySelector('#print_invoice');
+        const formTransaksi = document.querySelector('#form_transaksi');
+        let cartIdBarang;
+        let qtyInput;
+        let subtot;
+        let harga;
+
+
+        // work with data
+        const getData = async () => {
+            try {
+                const response = await fetch('https://api-warung-madura-dot-c-03-414902.et.r.appspot.com/gudang', {
+                method: 'GET'
+                });
+
+                if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json(); // Assuming the response is JSON
+                console.log(data)
+                return data;
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        };
+
+        const postToGudang = async (body) => {
+            try {
+                const response = await fetch('https://api-warung-madura-dot-c-03-414902.et.r.appspot.com/gudang', {
+                method: 'POST',
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(body)
+                });
+
+                if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response;
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        };
+
+        const updateToGudang = async (id_barang, body) => {
+            try {
+                const response = await fetch(`https://api-warung-madura-dot-c-03-414902.et.r.appspot.com/gudang/${id_barang}`, {
+                method: 'PUT',
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(body)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response;
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        };
+
+        const deleteFromGudang = async (id_barang) => {
+            try {
+                const response = await fetch(`https://api-warung-madura-dot-c-03-414902.et.r.appspot.com/gudang/${id_barang}`, {
+                method: 'DELETE',
+                headers: {
+                    "Content-Type": "application/json"
+                }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                buildSectionGudangTable()
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        };
+        
+        const postToTransaksi = async (bodyTransaksi, bodyBarang) => {
+            try {
+                const [response1, response2] = await Promise.all([
+                    fetch('https://api-warung-madura-dot-c-03-414902.et.r.appspot.com/transaksi', {
+                        method: 'POST',
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(bodyTransaksi)
+                    }),
+                    fetch('https://api-warung-madura-dot-c-03-414902.et.r.appspot.com/barang_terjual', {
+                        method: 'POST',
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(bodyBarang)
+                    })
+                ]);
+
+                if (!response1.ok || !response2.ok) {
+                    throw new Error(`HTTP error! status: ${response1.status} || ${response2.status}`);
+                }
+
+                return {
+                    transaksiResponse: await response1.json(),
+                    barangTerjualResponse: await response2.json()
+                };
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                throw error;
+            }
+        };
+
+
+        // interface update
+        const buildSectionGudangTable = async () => {
+            const datas = await getData();
+            tableGudang.innerHTML = '';
+            for (const data of datas) {
+                tableGudang.insertAdjacentHTML('beforeend', `
+                <tr>
+                    <td>${data.id_barang}</td>
+                    <td>${data.nama_barang}</td>
+                    <td>${data.stok}</td>
+                    <td>${data.harga_jual}</td>
+                    <td>
+                        <button onclick='buildUpdateSection(${JSON.stringify(data)})'>Edit</button>
+                        <button onclick='deleteFromGudang(${data.id_barang})'>Hapus</button>
+                    </td>
+                    <td>
+                        <button id='addToCartButton' onclick='addToCart(${JSON.stringify(data)})' disabled>+</button>
+                    </td>
+                </tr>
+                `);
+            }
+        };
+
+        const buildUpdateSection = (data) => {
+            id_barang.value = data.id_barang;
+            nama_barang.value = data.nama_barang;
+            stok.value = data.stok;
+            harga_jual.value = data.harga_jual;
+            id_barang.disabled = true;
+            document.querySelector('#formItemButton').innerHTML = 'Edit';
+        };
+
+        const resetForm = () => {
+            id_barang.value = '';
+            nama_barang.value = '';
+            stok.value = '';
+            harga_jual.value = '';
+            id_barang.disabled = false;
+            document.querySelector('#formItemButton').innerHTML = 'Tambah';
+        };
+
+        const resetTransaksi = () => {
+            invoiceId.value = '';
+            invoiceTanggalWaktu.value = '';
+            invoicePembayaran.disabled = true;
+            invoiceTanggalWaktu.disabled = true;
+            keranjang.innerHTML = '';
+        }
+
+        const fillDatetimeInput = (date) => {
+            const padZero = (num) => num.toString().padStart(2, '0');
+            const year = date.getFullYear();
+            const month = padZero(date.getMonth() + 1);
+            const day = padZero(date.getDate());
+            const hours = padZero(date.getHours());
+            const minutes = padZero(date.getMinutes());
+            // const seconds = padZero(date.getSeconds());
+
+            const formattedDatetime = `${year}-${month}-${day}T${hours}:${minutes}`;
+            invoiceTanggalWaktu.value = formattedDatetime;
+        };
+
+        const generateIdTransaksi = (date) => {
+            const year = date.getFullYear().toString().padStart(4, '0');
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            const seconds = date.getSeconds().toString().padStart(2, '0');
+            const dateTimeString = `${day}${month}${year}${hours}${minutes}${seconds}`;
+            invoiceId.value = dateTimeString;
+        };
+
+        const startTransaction = () => {
+            const addButtons = document.querySelectorAll('#addToCartButton');
+            invoiceTotal.disabled = false;
+            invoicePembayaran.disabled = false;
+            invoiceTanggalWaktu.disabled = false;
+            printInvoice.disabled = false;
+            const date = new Date();
+            generateIdTransaksi(date);
+            fillDatetimeInput(date);
+            addButtons.forEach(addButton => {
+                addButton.disabled = false
+            });
+        }
+
+        const addToCart = (data) => {
+            if (document.querySelector(`#qty_${data.id_barang}`)) {
+                const el = document.querySelector(`#qty_${data.id_barang}`)
+                let qty = parseInt(el.value)
+                qty += 1;
+                el.value = qty;
+                document.querySelector(`#subtot_${data.id_barang}`).innerHTML = qty * data.harga_jual;
+            } else {
+                const jumlah = 1;
+                keranjang.insertAdjacentHTML('beforeend', `
+                <tr>
+                    <td class='cart-id-barang'>${data.id_barang}</td>
+                    <td>${data.nama_barang}</td>
+                    <td class='harga'>${data.harga_jual}</td>
+                    <td>
+                        <input type=number value='${jumlah}' class='qty' id='qty_${data.id_barang}'>
+                    </td>
+                    <td class='subtot' id='subtot_${data.id_barang}'>${jumlah*data.harga_jual}</td>
+                </tr>
+                `);
+            }
+            cartIdBarang = document.querySelectorAll('.cart-id-barang');
+            qtyInput = document.querySelectorAll('.qty');
+            subtot = document.querySelectorAll('.subtot');
+            harga = document.querySelectorAll('.harga');
+
+            for (let index = 0; index < qtyInput.length; index++) {
+                qtyInput[index].addEventListener('change', () => {
+                    subtot[index].innerHTML = parseInt(qtyInput[index].value) * parseInt(harga[index].innerHTML);
+                    updateTotal();
+                });              
+            }
+            updateTotal();
+        }
+
+        const updateTotal = () => {
+            subtot = document.querySelectorAll('.subtot');
+            let total = 0;
+            subtot.forEach(s => {
+                total += parseInt(s.innerHTML);
+            });
+            totalHarga.innerHTML = total;
+        };
+
+        // event listeners 👂🏻🧏🏻
+        formItems.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const body = {
+                "id_barang": parseInt(id_barang.value),
+                "nama_barang": nama_barang.value,
+                "stok": parseInt(stok.value),
+                "harga_jual": parseFloat(harga_jual.value)
+            };
+
+            const button = document.querySelector('#formItemButton');
+            let result;
+            switch(button.innerHTML) {
+                case "Tambah": result = await postToGudang(body);
+                break;
+                case "Edit": result = await updateToGudang(body.id_barang, body)
+            }
+
+            if(result) {
+                resetForm();
+                buildSectionGudangTable();
+            }
+        });
+
+        formTransaksi.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const bodyTransaksi = {
+                "id_transaksi": invoiceId.value,
+                "tanggal_waktu": invoiceTanggalWaktu.value,
+                "total_harga": parseFloat(invoiceTotal.innerHTML),
+                "metode_pembayaran": invoicePembayaran.value
+            };
+
+            let bodyBarang = [];
+            for (let index = 0; index < cartIdBarang.length; index++) {
+                const id_barang = cartIdBarang[index].innerHTML;
+                const cartQty = parseInt(qtyInput[index].value);
+                const id_transaksi = invoiceId.value;
+                const subTotal = parseFloat(subtot[index].innerHTML);
+                const temp = {
+                    "id_transaksi": id_transaksi,
+                    "id_barang": id_barang,
+                    "qty": cartQty,
+                    "total_harga": subTotal
+                };
+                bodyBarang.push(temp);
+            }
+
+            console.log(bodyTransaksi);
+            console.log(bodyBarang);
+
+            try {
+                const { transaksiResponse, barangTerjualResponse } = await postToTransaksi(bodyTransaksi, bodyBarang);
+                if (transaksiResponse && barangTerjualResponse) {
+                    console.log('Transaksi berhasil:', transaksiResponse, barangTerjualResponse);
+                    buildSectionGudangTable();
+                    resetTransaksi();
+                } else {
+                    console.log('Transaksi gagal');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+       // etc.
+        buildSectionGudangTable()
+    </script>
+</body>
+
+</html>
+
+
